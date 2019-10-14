@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"github.com/swallyu/ts/sqlx"
 	"reflect"
 	"testing"
 )
@@ -10,31 +11,35 @@ import (
 import _ "github.com/go-sql-driver/mysql"
 
 type AdminUser struct {
-	Id        int    `org:"id"`
-	LoginName string `orm:"login_name"`
+	Id        int    `db:"id"`
+	LoginName string `db:"login_name"`
 }
 
 func Test_DbHelper(t *testing.T) {
 
 	source := "bomas:bomas123@tcp(gz-cdb-f70114ox.sql.tencentcdb.com:62353)/e2es-service"
 
-	db, err := sql.Open("mysql", source)
+	_, err3 := sql.Open("mysql", source)
+	fmt.Println(err3)
 
+	db, err := sqlx.Open("mysql", source)
+	_, err = sql.Open("mysql", source)
 	if err != nil {
 		fmt.Println(err)
 	}
 	var user []AdminUser
 
-	QueryList(db, &user, "select id,login_name LoginName from admin_user ")
-	//data, err := QuerForMap(db, "select id,login_name LoginName from admin_user ")
-	//for v := range data {
-	//	fmt.Println(json.Marshal(v))
-	//}
-
+	err = db.Select(&user, "select id,login_name from admin_user")
+	if err != nil {
+		fmt.Println(err)
+	}
 	fmt.Println(len(user))
+	for _, v := range user {
+		fmt.Println(v.LoginName)
+	}
 }
 
-func QueryList(db *sql.DB,m interface{}, sqlInfo string, args ...interface{})  {
+func QueryList(db *sql.DB, m interface{}, sqlInfo string, args ...interface{}) {
 	rows, err := db.Query(sqlInfo, args...)
 
 	if err != nil {
@@ -42,15 +47,15 @@ func QueryList(db *sql.DB,m interface{}, sqlInfo string, args ...interface{})  {
 	}
 	defer rows.Close()
 
-	//columns, _ := rows.Columns()
-	//values := make([]interface{}, len(columns))
-	//reflectStruct := reflect.ValueOf(m).Elem()
+	columns, _ := rows.Columns()
+	values := make([]interface{}, len(columns))
+	reflectStruct := reflect.ValueOf(m).Elem()
 	reflectType := reflect.TypeOf(m)
 
 	if reflectType.Kind() == reflect.Ptr {
-		reflectType = reflectType.Elem()
+		reflectType = reflectType.Elem().Elem()
 	}
-
+	fmt.Println(reflectType.Kind())
 	for i := 0; i < reflectType.NumField(); i++ {
 		field := reflectType.Field(i)
 		mapName := field.Tag.Get("orm")
@@ -59,16 +64,16 @@ func QueryList(db *sql.DB,m interface{}, sqlInfo string, args ...interface{})  {
 		}
 		fmt.Println(mapName)
 	}
-	//for i, v := range columns {
-	//	_, ret := reflectType.FieldByName(v)
-	//	if ret {
-	//		value := reflectStruct.FieldByName(v)
-	//		values[i] = value.Addr().Interface()
-	//	} else {
-	//		var tmp = sql.RawBytes{}
-	//		values[i] = &tmp
-	//	}
-	//}
+	for i, v := range columns {
+		_, ret := reflectType.FieldByName(v)
+		if ret {
+			value := reflectStruct.FieldByName(v)
+			values[i] = value.Addr().Interface()
+		} else {
+			var tmp = sql.RawBytes{}
+			values[i] = &tmp
+		}
+	}
 	//for rows.Next() {
 	//	err := rows.Scan(values...)
 	//	if err != nil {
@@ -134,7 +139,7 @@ func QuerForMap(db *sql.DB, sqlInfo string, args ...interface{}) ([]map[string]i
 
 	values := make([]sql.RawBytes, len(columns))
 	cache := make([]interface{}, columnLength) //临时存储每行数据
-	for index, _ := range cache { //为每一列初始化一个指针
+	for index, _ := range cache {              //为每一列初始化一个指针
 		cache[index] = &values[index]
 	}
 	var list []map[string]interface{} //返回的切片
